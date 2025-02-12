@@ -1,0 +1,96 @@
+name: Stripe Payments CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/main.yml"
+  # pull_request:
+  #   branches:
+  #     - main
+
+jobs:
+  frontend-CI:
+    runs-on: ubuntu-latest
+    steps:
+      ## Checkout the code from the repository ##
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      ## Setup Node.js ##
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      ## Cache Node modules ##
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/frontend/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      ## Install dependencies ##
+      - name: Install dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      ## Run tests ##
+      - name: Run tests
+        run: |
+          cd frontend
+          yarn test
+
+      ## Code Quality ##
+      - name: Code Quality
+        run: |
+          cd frontend
+          yarn lint
+
+  ## Deploy the frontend to S3 ##
+  Deploy-Frontend:
+    runs-on: ubuntu-latest
+    needs: frontend-CI
+    steps:
+      ## Checkout the code from the repository ##
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      ## Cache Node modules ##
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/frontend/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      ## Setup Node.js ##
+      - name: Install dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      ## Build the frontend ##
+      - name: Build frontend
+        run: |
+          cd frontend
+          yarn build
+
+      ## Deploy to S3 ##
+      - name: Deploy to S3
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --follow-symlinks --delete
+        env:
+          AWS_S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "ap-south-1"
+          SOURCE_DIR: "frontend/build"
